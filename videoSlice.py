@@ -9,13 +9,14 @@ from pox.lib.util import dpidToStr
 from pox.lib.addresses import IPAddr, EthAddr
 from collections import namedtuple
 import os
+import re
 from switch import Switch
 from net_graph import NetGraph
 import signal
 from edge import Edge
 from path import Path
 from usersmanager import UsersManager
-import re
+from rule import Rule
 
 log = core.getLogger()
 
@@ -40,11 +41,22 @@ class VideoSlice (EventMixin):
 	#list of possible hosts (to be cleaned in order to avoid hosts/switch possible mix) linked to their switch
 	#tuple in the form of (host_mac, switch_mac)
 	self.possible_hosts = []
+	#list of rules
+	self.rules = []
+	self.loadrules()
 	out = file("user_debug.txt", "w")
 	out.write(self.usrmgr.print_users())
 	out.close()	
   
     
+    def loadrules(self):
+	rules_config = file("rules.conf", "r")
+	line = rules_config.readline()
+	while len(line) != 0:
+	  r = Rule(line)
+	  self.rules.append(r)
+	  line = rules_config.readline()
+	
     def loadpolicies(self):
 	#policies are specified in queues_policies.conf file according to the following grammar:
 	#@class_name @bandwidth (bandwidth in Mbit)      
@@ -127,16 +139,11 @@ class VideoSlice (EventMixin):
     
     def printswitches(self):
       #debug method. it prints ARP table of each switch in the net
-      output = file("switches.txt", "w")
+      output = file("rules.txt", "w")
       
-      for s in self.switches:
-	output.write(s.dpid + ":\n")
-	for key in s.ARPTable.keys():
-	  for entry in s.ARPTable[key]:
-	    output.write(key + " " + str(entry) + " ")
-	  output.write("\n")
-      output.write("************\n")
-      
+      for r in self.rules:
+	output.write(r.to_s())
+	
       output.close()
     
     #every time a packet arrive to controller we'll update the graph according to the new
@@ -149,16 +156,41 @@ class VideoSlice (EventMixin):
     def _handle_PacketIn (self, event):
         """
         Handle packet in messages from the switch to implement above algorithm.
-        """
+        """    
         packet = event.parsed
-        tcpp = event.parsed.find('tcp')
 	self.printswitches()
 	self.clean_hosts()
 	self.update_graph()
 
+	#check if this packet activates some rule
+	check = False
+	
+	for r in self.rules:
+	  if ((r.check_rule(event.parsed)) == 1):
+	    #rule checked, must drop packet
+	    check = True
+	    break	 	
+	
+	
+	def drop():
+	    d = file("drop.txt", "w")
+	    d.write("drop " + str(check) + " " + str(packet.src) + " " + str(packet.dst) + "\n")
+	    d.close()
+	    msg = of.ofp_flow_mod()
+	    msg.match = of.ofp_match.from_packet(packet, event.port)
+	    #TODO it seems that if one does not specify any action it will result in a drop by the switch
+	    #msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
+	    msg.data = event.ofp
+	    msg.in_port = event.port
+	    event.connection.send(msg)	    
+	
         def forward (message = None):
             this_dpid = dpid_to_str(event.dpid)
-	    
+            
+            
+            forw = file("forw.txt", "w")
+            forw.write("forwardo " + str(packet.src) + " " + str(packet.dst) + "\n")
+            forw.close()
             
             if packet.dst.is_multicast:
                 flood()
@@ -184,10 +216,7 @@ class VideoSlice (EventMixin):
 		      if h_tuple[0] == str(packet.src):
 			found_host = True
 		    if found_host == False:
-		      output = file("added.txt", "w")
-		      output.write("added\n")
 		      self.possible_hosts.append((str(packet.src), this_dpid))		    
-		      output.close()
 		    
 		    #forwardo se esiste, l'associazione (MAC -> porta output)
 		    for s in self.switches:
@@ -235,13 +264,6 @@ class VideoSlice (EventMixin):
 		      msg.data = event.ofp
 		      msg.in_port = event.port
 		      event.connection.send(msg)		      
-		      '''
-		      msg = of.ofp_packet_out()
-		      msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
-		      msg.data = event.ofp
-		      msg.in_port = event.port
-		      event.connection.send(msg)		      
-                     '''
                     
                     #prendo il pacchetto in ingresso
                     #controllo se nella mia mappa (MAC) -> input port ho la entry corrispondente a dove deve andare il pacchetto.
@@ -249,25 +271,9 @@ class VideoSlice (EventMixin):
                     #senno', floodo su tutte le porte
                     #in ogni caso mi marco che i pacchetti da srcMAC arrivano da quella input port
                     #il dstMAC dev'essere in una delle altre porte, prima o poi lo scopriro'
-                    
-                    
-                    
-                    
-                    
-		    '''
-                    if (event.port == 3):
-                    	msg = of.ofp_packet_out()
-                    	msg.actions.append(of.ofp_action_output(port = 4))
-			msg.data = event.ofp
-                    	msg.in_port = event.port
-                    	event.connection.send(msg)
-                    if (event.port == 4):
-                    	msg = of.ofp_packet_out()
-                    	msg.actions.append(of.ofp_action_output(port = 3))
-                    	msg.data = event.ofp
-                    	msg.in_port = event.port
-                    	event.connection.send(msg)
-		    '''
+		      correct = file("correct.txt", "w")
+		      correct.write(str(forwarded))
+		      correct.close()
 
                 except AttributeError:
                     log.debug("packet type has no transport ports, flooding")
@@ -281,7 +287,10 @@ class VideoSlice (EventMixin):
             msg.in_port = event.port
             event.connection.send(msg)
 
-        forward()
+        if check == False:
+	  forward()
+	else:
+	  drop()
 
 
     def _handle_ConnectionUp(self, event):
