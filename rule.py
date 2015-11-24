@@ -1,4 +1,6 @@
 import re
+import datetime
+import time
 
 class Rule:
   '''
@@ -51,7 +53,7 @@ class Rule:
 
     #rule of type: IF PROTOCOL FROM X DROP	
     if (len(explode) == 5):
-      if (str(explode[0]) == "IF" and str(explode[2]) == "FROM" and str(explode[5]) == "DROP"):
+      if (str(explode[0]) == "IF" and str(explode[2]) == "FROM" and str(explode[4]) == "DROP"):
 	if ((pat_ip.match(explode[3]) or pat_mac.match(explode[3]))):
 	  case = 3
 	  
@@ -232,27 +234,58 @@ class Rule:
       
     #packet must have same source and travel on same protocol
     if self.rule_type == 3:
-      if ((self.src == packet.src) or (ip4_payload != None and ip4_payload.srcip == self.src)):
-	if (self.protocol == "IP" and ip4_payload != None):
+        
+      if ((ip4_payload != None and ip4_payload.srcip == self.src)):
+	
+	tcp2 = file("tcp2.txt", "w")
+	tcp2.write(self.src + " "  + str(ip4_payload.srcip) + " " + self.protocol + " " + str(tcp_payload) + "\n")
+	tcp2.close()		
+	
+	if (self.protocol == "IP"):
+	  tcp = file("ip.txt", "w")
+	  tcp.write("ip found!\n")
+	  tcp.close()		  
 	  return 1
+	  
 	if (self.protocol == "TCP" and tcp_payload != None):
+	  tcp = file("tcp.txt", "w")
+	  ts = time.time()
+	  tcp.write(self.src + " "  + str(ip4_payload.srcip) + " " + self.protocol + " " + str(tcp_payload) + "\n")
+	  st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+	  tcp.write(str(st) + " tcp found!\n")
+	  tcp.close()	  
 	  return 1
-	if (self.protocol == "UDP" and udp_payload != None):
+	if (self.protocol == "UDP" and udp_payload != False):
+	  tcp = file("udp.txt", "w")
+	  tcp.write("UDP found!\n")
+	  tcp.close()	  	  
 	  return 1
 	if (self.protocol == "DHCP" and dhcp_payload != None):
+	  tcp = file("udp.txt", "w")
+	  tcp.write("DHCP found!\n")
+	  tcp.close()		  
 	  return 1
 	if (self.protocol == "ICMP" and icmp_payload != None):
+	  tcp = file("udp.txt", "w")
+	  tcp.write("ICMP found!\n")
+	  tcp.close()		  
 	  return 1
 	if (self.protocol == "DNS" and dns_payload != None):
+	  tcp = file("udp.txt", "w")
+	  tcp.write("DNS found!\n")
+	  tcp.close()		  
 	  return 1
 	if (self.protocol == "LLDP" and lldp_payload != None):
+	  tcp = file("udp.txt", "w")
+	  tcp.write("LLDP found!\n")
+	  tcp.close()		  
 	  return 1
       return 0
       
       
     #packet must have same source and destination addresses and same protocol
     if self.rule_type == 4:
-      if (((self.src == packet.src) or (ip4_payload != None and ip4_payload.srcip == self.src)) and ((self.dst == packet.dst) or (ip4_payload != None and ip4_payload.dstip == self.dst))):
+      if (((self.src == packet.src) and (ip4_payload != None and ip4_payload.srcip == self.src)) and ((self.dst == packet.dst) and (ip4_payload != None and ip4_payload.dstip == self.dst))):
 	if (self.protocol == "IP" and ip4_payload != None):
 	  return 1
 	if (self.protocol == "TCP" and tcp_payload != None):
