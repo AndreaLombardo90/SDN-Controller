@@ -47,7 +47,6 @@ class VideoSlice (EventMixin):
 	#list of rules
 	self.rules = []
 	self.loadrules()
-	#TODO static loading of links bandwidths from file "bandwidths.conf"
 	#this configuration file follows that grammar: #MAC_ADDRESS1# #MAC_ADDRESS2# #BW#
 	#bandwidth is expressed in Mbps
 	self.loaded_net = False
@@ -413,6 +412,6 @@ def launch():
     pox.openflow.spanning_tree.launch()
 
     '''
-    Starting the Video Slicing module
+    Starting the SDN Controller module
     '''
     core.registerNew(VideoSlice)

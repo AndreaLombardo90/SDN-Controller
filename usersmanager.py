@@ -29,11 +29,11 @@ class UsersManager:
   def print_users(self):
     s = ""
     
-    s = s + "Classi:\n"
+    s = s + "Classes:\n"
     for key in self.classes.keys():
       s = s + key + "\n"
     
-    s = s + "Utenti: \n"
+    s = s + "Users: \n"
     
     for key in self.classes.keys():
       s = s + key + ":\n" 

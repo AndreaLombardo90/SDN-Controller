@@ -209,11 +209,7 @@ class Rule:
     icmp_payload = packet.find('icmp')
     dns_payload = packet.find('dns')    
     lldp_payload = packet.find('lldp')    
-    
-    d = file("check_drop.txt", "w")
-    d.write("check if i must drop " + str(self.src) + " " + str(packet.src) + "\n")
-    d.close()
-    
+        
     
     #packet must have same source address as this rule (MAC OR IP address)
     if self.rule_type == 1:
@@ -236,49 +232,22 @@ class Rule:
     if self.rule_type == 3:
         
       if ((ip4_payload != None and ip4_payload.srcip == self.src)):
+		
 	
-	tcp2 = file("tcp2.txt", "w")
-	tcp2.write(self.src + " "  + str(ip4_payload.srcip) + " " + self.protocol + " " + str(tcp_payload) + "\n")
-	tcp2.close()		
-	
-	if (self.protocol == "IP"):
-	  tcp = file("ip.txt", "w")
-	  tcp.write("ip found!\n")
-	  tcp.close()		  
+	if (self.protocol == "IP"):	  
 	  return 1
 	  
 	if (self.protocol == "TCP" and tcp_payload != None):
-	  tcp = file("tcp.txt", "w")
-	  ts = time.time()
-	  tcp.write(self.src + " "  + str(ip4_payload.srcip) + " " + self.protocol + " " + str(tcp_payload) + "\n")
-	  st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-	  tcp.write(str(st) + " tcp found!\n")
-	  tcp.close()	  
 	  return 1
-	if (self.protocol == "UDP" and udp_payload != False):
-	  tcp = file("udp.txt", "w")
-	  tcp.write("UDP found!\n")
-	  tcp.close()	  	  
+	if (self.protocol == "UDP" and udp_payload != False):	  	  
 	  return 1
-	if (self.protocol == "DHCP" and dhcp_payload != None):
-	  tcp = file("udp.txt", "w")
-	  tcp.write("DHCP found!\n")
-	  tcp.close()		  
+	if (self.protocol == "DHCP" and dhcp_payload != None):	  
 	  return 1
-	if (self.protocol == "ICMP" and icmp_payload != None):
-	  tcp = file("udp.txt", "w")
-	  tcp.write("ICMP found!\n")
-	  tcp.close()		  
+	if (self.protocol == "ICMP" and icmp_payload != None):		  
 	  return 1
-	if (self.protocol == "DNS" and dns_payload != None):
-	  tcp = file("udp.txt", "w")
-	  tcp.write("DNS found!\n")
-	  tcp.close()		  
+	if (self.protocol == "DNS" and dns_payload != None):		  
 	  return 1
-	if (self.protocol == "LLDP" and lldp_payload != None):
-	  tcp = file("udp.txt", "w")
-	  tcp.write("LLDP found!\n")
-	  tcp.close()		  
+	if (self.protocol == "LLDP" and lldp_payload != None):	  
 	  return 1
       return 0
       

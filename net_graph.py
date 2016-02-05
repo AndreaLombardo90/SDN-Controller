@@ -89,23 +89,18 @@ class NetGraph:
 	  return k 
 	  
 	  
-    #TODO gli indirizzi caricati dalla rete non corrispondono a quelli impostati a mano
-    #una soluzione potrebbe essere quella di discriminare a livello 4 per indirizzo e non 2
     try:     
       (dist, prev) = self.wrapper_Dijkstra(dictionary, get_index(str(src)), get_index(str(dst)))
     except KeyError:
       print("errorwrapper") 
     
     path = self.rebuild_path(prev, get_index(str(dst)))
-    
-    hh = file("testdijkstra.txt", "a+")
-    hh.write("\n\n***\n\n(" + str(dictionary) + ") minpath from " + str(src) + " (" + str(get_index(str(src))) + ") to " + str(dst) + "(" + str(get_index(str(dst))) + "):\n" + str(dist) + " " + str(prev) + " " + str(path) + " " + str(self.nodes) + "\n\n*****\n\n")
-    hh.close()       
+  
     
     return (dist, prev, path, dictionary)
     
     
-  #TODO something wrong with mapping between dictionary and self.nodes.keys()
+
   #real Dijkstra implementation for the Dijkstra interface
   def wrapper_Dijkstra(self, dictionary, src, dst):
     
