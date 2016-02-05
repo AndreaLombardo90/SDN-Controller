@@ -1,0 +1,130 @@
+*********************************************
+* - SDN Controller 2015 - PYTHON POX MODULE *
+*********************************************
+
+
+SDN Controller is a POX module that can monitor and manage traffic between OpenFlow-compatible switches
+according to user-defined rules.
+
+System Requirements:
+
+- Python 2.7 (WARNING: POX can't work on Python 3!)
+- POX controller for OpenFlow SDN
+- root privileges
+
+
+How to run SDN Controller:
+
+There are a couple of things to be done before launching SDN Controller.
+If you don't need to define user traffic classes, routing rules and network topology data, you can run 
+SDN Controller directly with the following command:
+
+sudo ./pox.py SDN_Controller
+
+You can specify different traffic queues policies by editing "queues_policies.conf" file.
+This file follows the following grammar:
+
+#CLASS_NAME# #MAX_BANDWIDTH#
+
+e.g.:
+
+FREE 10
+PREMIUM 20
+ULTRA 30
+
+Bandwidth is expressed in Mbps.
+
+Once you defined different classes in "queues_policies.conf", you can then assign users to them.
+In order to do that you need to edit "users_classes.conf".
+
+It follows this grammar:
+
+#CLASS_NAME#
+#IP1|MAC1#
+#IP2|MAC2#
+[...]
+#IPN|MACN#
+#CLASS_NAME2#
+#IP1|MAC1#
+[..]
+
+e.g.:
+
+FREE
+10.0.0.1
+10.0.0.2
+PREMIUM
+10.0.0.6
+ULTRA
+10.0.0.7
+
+You can also define routing rules by editing "rules.conf" file.
+Rules define what kind of packets and from/to who must be dropped by switches.
+All rules always apply for every switch in the network.
+
+Rules follow this grammar:
+
+#MAC|IP# DROP
+
+(drop packets with source address equal to MAC or IP specified)
+
+FROM #MAC|IP# TO #MAC|IP# DROP
+
+(drop packets with source and destination addresses equal to MACs or IPs specified)
+
+IF #PROTOCOL# FROM #MAC|IP# DROP
+
+(drop packets from source MAC/IP specified that travel on #PROTOCOL# *)
+
+IF #PROTOCOL# FROM #MAC|IP# TO #MAC|IP# DROP
+
+(drop packets that go from source MAC/IP to destination MAC/IP that travel on #PROTOCOL# *)
+
+#MAC|IP# #PORT# DROP
+
+(drop packets incoming from MAC/IP belonging to the port specified)
+
+FROM #MAC|IP# #PORT# TO #MAC|IP# DROP
+
+(drop packets that go from MAC/IP to MAC/IP, belonging to the port specified for source address)
+
+FROM #MAC|IP# TO #MAC|IP# #PORT# DROP
+
+(drop packets that go from MAC/IP to MAC/IP, belonging to the port specified for destination address)
+
+FROM #MAC|IP# #PORT# TO #MAC|IP# #PORT# DROP
+
+(drop packets that go from MAC/IP to MAC/IP, belonging to the ports specified for source address and destination address)
+
+
+
+* #PROTOCOL# can be picked from these: IPV4, TCP, UDP, DHCP, ICMP, DNS and LLDP.
+
+e.g.:
+
+10.0.0.1 DROP
+
+FROM 10.0.0.1 22 DROP
+
+FROM 10.0.0.1 22 TO 10.0.0.2 22 DROP
+
+
+SDN Controller can retrieve network topology simply by observing traffic in the network.
+Unfortunately, it can't get information about bandwidth of links in the network.
+You can specify the bandwidth of the various links by specifing them in "bandwidths.conf" file.
+You don't need to specify bandwidth of all links: if you specify only for a subset of them, SDN Controller
+will assert a bandwidth of 1Mbps for the unspecified links. 
+
+"bandwidth.conf" follows this grammar:
+
+#MAC1# #MAC2# #BANDWIDTH#
+
+Bandwidth is expressed in Mbps.
+
+e.g.:
+
+1a-80-fd-4b-91-01 1a-80-fd-4b-91-02 10
+1a-80-fd-4b-91-02 1a-80-fd-4b-91-04 10
+1a-80-fd-4b-91-01 1a-80-fd-4b-91-03 20
+
+
