@@ -17,6 +17,7 @@ from edge import Edge
 from path import Path
 from usersmanager import UsersManager
 from rule import Rule
+from timeit import default_timer as timer
 
 log = core.getLogger()
 
@@ -25,6 +26,8 @@ log = core.getLogger()
 class VideoSlice (EventMixin):
 
     def __init__(self):
+	self.start_time = timer()
+	self.begin_work = False
         self.listenTo(core.openflow)
         core.openflow_discovery.addListeners(self)
 	signal.signal(signal.SIGINT, self.signal_handler)          
@@ -44,10 +47,31 @@ class VideoSlice (EventMixin):
 	#list of rules
 	self.rules = []
 	self.loadrules()
-	out = file("user_debug.txt", "w")
-	out.write(self.usrmgr.print_users())
-	out.close()	
+	#TODO static loading of links bandwidths from file "bandwidths.conf"
+	#this configuration file follows that grammar: #MAC_ADDRESS1# #MAC_ADDRESS2# #BW#
+	#bandwidth is expressed in Mbps
+	self.loaded_net = False
+	self.loaded_net = self.loadEdges()
+	self.begin_work = True
   
+    
+    def loadEdges(self):
+	#this method loads data belonging to edges in network that can be retrieved in bandwidths.conf
+	cnt = 0
+	edges_config = file("bandwidths.conf", "r")
+	line = edges_config.readline().split()
+	while len(line) != 0:
+	  if (len(line) == 3):
+	    self.net_graph.addEdge(line[0], line[1], int(line[2]))
+	    cnt = cnt + 1
+	  line = edges_config.readline().split()
+	
+	edges_config.close()
+	
+	if cnt != 0:
+	  return True
+	else:
+	  return False
     
     def loadrules(self):
 	rules_config = file("rules.conf", "r")
@@ -56,6 +80,7 @@ class VideoSlice (EventMixin):
 	  r = Rule(line)
 	  self.rules.append(r)
 	  line = rules_config.readline()
+	rules_config.close()
 	
     def loadpolicies(self):
 	#policies are specified in queues_policies.conf file according to the following grammar:
@@ -68,6 +93,7 @@ class VideoSlice (EventMixin):
 	      self.policies[line[0]] = line[1]        
 	  line = queues_config.readline().split()
 	
+	queues_config.close()
 	self.usrmgr.set_policies(self.policies)	
     
     def loadUsers(self):
@@ -100,18 +126,11 @@ class VideoSlice (EventMixin):
         l = event.link
         sw1 = dpid_to_str(l.dpid1)
         sw2 = dpid_to_str(l.dpid2)
-                   
-        if (event.added):
+	  
+        if (event.added and self.loaded_net == False and self.begin_work == True):
 	  self.net_graph.addEdge(sw1,sw2,1)
 	  self.net_graph.addEdge(sw2,sw1,1)
-	elif (event.removed):
-	  self.net_graph.removeEdge(sw1,sw2)
-	  self.net_graph.removeEdge(sw2,sw1)
-	  for s in self.switches:
-	    for key in s.ARPTable.keys():
-	      s.ARPTable[key] = []
-	  for s in self.switches:
-	    s.ARPTable.clear()
+
 	    
 	    
 	  
@@ -128,13 +147,6 @@ class VideoSlice (EventMixin):
       
       for h in to_be_removed:
 	self.possible_hosts.remove(h)
-      
-      output = file("hosts.txt", "w")
-      output.write("hosts:\n")
-      for h in self.possible_hosts:
-	output.write(h[0] + " " + h[1] + "\n")
-	
-      output.close()
       
     
     def printswitches(self):
@@ -162,6 +174,7 @@ class VideoSlice (EventMixin):
 	self.clean_hosts()
 	self.update_graph()
 
+	#packet filtering
 	#check if this packet activates some rule
 	check = False
 	
@@ -173,13 +186,8 @@ class VideoSlice (EventMixin):
 	
 	
 	def drop():
-	    d = file("drop.txt", "w")
-	    d.write("drop " + str(check) + " " + str(packet.src) + " " + str(packet.dst) + "\n")
-	    d.close()
 	    msg = of.ofp_flow_mod()
 	    msg.match = of.ofp_match.from_packet(packet, event.port)
-	    #TODO it seems that if one does not specify any action it will result in a drop by the switch
-	    #msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
 	    msg.data = event.ofp
 	    msg.in_port = event.port
 	    event.connection.send(msg)	    
@@ -188,9 +196,19 @@ class VideoSlice (EventMixin):
             this_dpid = dpid_to_str(event.dpid)
             
             
-            forw = file("forw.txt", "w")
-            forw.write("forwardo " + str(packet.src) + " " + str(packet.dst) + "\n")
-            forw.close()
+            
+            check = 0
+            for i in self.possible_hosts:
+	      if (i[0] == str(packet.src) or i[0] == str(packet.dst)):
+		check = check + 1
+	    
+	    path = None
+	    dictionary = None
+            if (check == 2):
+	      #Dijkstra is used only to compute paths between hosts, not for logistic informations between switches
+	      (dist, prev, path, dictionary) = self.net_graph.Dijkstra(str(packet.src), str(packet.dst))
+
+            
             
             if packet.dst.is_multicast:
                 flood()
@@ -205,75 +223,116 @@ class VideoSlice (EventMixin):
 		    #TODO:forwarding of packets according to source/destination user and his class
 		    #using Dijkstra
 		  
-		    #controllo il dpid dello switch.
-		    #se nella sua arp table c'e' l'entry che mi serve (coppia dst MAC -> porta), inoltro senza problemi e
-		    #eventualmente mi marco che su input ho connesso il MAC in src
+		    valid_path = True
 		    
-		    forwarded = False
-		    #source may be an host (MAC first time seen by switch)
-		    found_host = False
-		    for h_tuple in self.possible_hosts:
-		      if h_tuple[0] == str(packet.src):
-			found_host = True
-		    if found_host == False:
-		      self.possible_hosts.append((str(packet.src), this_dpid))		    
 		    
-		    #forwardo se esiste, l'associazione (MAC -> porta output)
-		    for s in self.switches:
-		      if s.dpid == this_dpid:
-			stringa = str(packet.src)
-	
-			
-			
-			
-			if s.ARPTable.keys().__contains__(stringa) == False:
-			  s.ARPTable[stringa] = []
-			  s.ARPTable[stringa].append(event.port)				  
-			elif s.ARPTable.keys().__contains__(stringa) == True and s.ARPTable[stringa].__contains__(event.port) == False:
-			  s.ARPTable[stringa].append(event.port)
-			
-			for k in s.ARPTable.keys():
-			  if k == packet.dst:
-			    #entry disponibile, inoltro sulla porta corretta
-			    msg = of.ofp_flow_mod()
-			    #msg.idle_timeout = of.OFP_FLOW_PERMANENT
-			    #msg.hard_timeout = of.OFP_FLOW_PERMANENT
-			    msg.match = of.ofp_match.from_packet(packet, event.port)
-			    for entry in s.ARPTable[k]:
-			      msg.actions.append(of.ofp_action_output(port = int(entry)))
-			      msg.data = event.ofp
-			      #msg.in_port = event.port
-			      event.connection.send(msg)
-			    forwarded = True		    
-			    '''
-			    msg = of.ofp_packet_out()
-			    msg.actions.append(of.ofp_action_output(port = int(s.ARPTable[k])))
-			    msg.data = event.ofp
-			    msg.in_port = event.port
-			    event.connection.send(msg)			    
-			    '''
+		    if (path == None):
+		      valid_path = False
+		    else:
+		      for i in path:
+			if (i == None):
+			  valid_path = False
+			  break
 			  
+	            #resolve mapping between dictionary and path
+	            if (valid_path == True):
+		      for i in range(len(path)):
+			path[i] = str(dictionary[path[i]])
+		  
+
+		    path_check = file("path_check.txt", "w")
+		    path_check.write("loaded " + str(self.loaded_net) + " " + str(packet.src) + " " + str(packet.dst) + " " + str(path) + "\n")
+		    path_check.close()
 		    
-		    if forwarded == False:
-		      #non conosco su quale porta mandare il pacchetto. lo hubbifizzo.
-		      msg = of.ofp_flow_mod()
-		      #msg.idle_timeout = of.OFP_FLOW_PERMANENT
-		      #msg.hard_timeout = of.OFP_FLOW_PERMANENT
-		      msg.match = of.ofp_match.from_packet(packet, event.port)
-		      msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
-		      msg.data = event.ofp
-		      msg.in_port = event.port
-		      event.connection.send(msg)		      
-                    
-                    #prendo il pacchetto in ingresso
-                    #controllo se nella mia mappa (MAC) -> input port ho la entry corrispondente a dove deve andare il pacchetto.
-                    #se si, inoltro su quella porta
-                    #senno', floodo su tutte le porte
-                    #in ogni caso mi marco che i pacchetti da srcMAC arrivano da quella input port
-                    #il dstMAC dev'essere in una delle altre porte, prima o poi lo scopriro'
-		      correct = file("correct.txt", "w")
-		      correct.write(str(forwarded))
-		      correct.close()
+		    if (check == 2 and valid_path == True and path.__contains__(str(this_dpid)) and (timer()-self.start_time) >= 20):
+		      #if check equals 2 we need to check if Dijkstra returned a valid path for forwarding
+		      #path decoding:
+		      #1) find position in path of current switch (this_dpid)
+		      #2) next hop will be in next position of path (if we are at the end of the path, then next hop will be packet.dst)
+		      next_hop = None
+		      for hop in path:
+			if str(hop) == str(this_dpid):
+			  if path.index(hop) == len(path)-1:
+			    next_hop = str(packet.dst)
+			    break
+			  else:
+			    next_hop = path[path.index(hop)+1]
+			    break		  
+
+	
+		      for s in self.switches:
+			if s.dpid == str(this_dpid):	
+
+			  for k in s.ARPTable.keys():
+			    if k == next_hop:
+			      #entry available, we forward the packet on the correct port
+			      msg = of.ofp_flow_mod()
+			      #msg.idle_timeout = of.OFP_FLOW_PERMANENT
+			      #msg.hard_timeout = of.OFP_FLOW_PERMANENT
+			      msg.match = of.ofp_match.from_packet(packet, event.port)
+			      for entry in s.ARPTable[k]:
+				msg.actions.append(of.ofp_action_output(port = int(entry)))
+				msg.data = event.ofp
+				#msg.in_port = event.port
+				event.connection.send(msg)
+		       	
+		      
+		      
+		    else:
+		      forwarded = False
+		      #source may be an host (MAC first time seen by switch)
+
+		      found_host = False
+		      for h_tuple in self.possible_hosts:
+			if h_tuple[0] == str(packet.src):
+			  found_host = True
+		      if found_host == False:
+			self.possible_hosts.append((str(packet.src), this_dpid))		    
+		      
+		      #forward the packet if the corresponding mapping (MAC -> output port) exists
+		      for s in self.switches:
+			if s.dpid == this_dpid:
+			  stringa = str(packet.src)
+  
+			  if s.ARPTable.keys().__contains__(stringa) == False:
+			    s.ARPTable[stringa] = []
+			    s.ARPTable[stringa].append(event.port)				  
+			  elif s.ARPTable.keys().__contains__(stringa) == True and s.ARPTable[stringa].__contains__(event.port) == False:
+			    s.ARPTable[stringa].append(event.port)
+			  
+			  for k in s.ARPTable.keys():
+			    if k == packet.dst:
+			      #entry available, we forward the packet on the correct port
+			      msg = of.ofp_flow_mod()
+			      #msg.idle_timeout = of.OFP_FLOW_PERMANENT
+			      #msg.hard_timeout = of.OFP_FLOW_PERMANENT
+			      msg.match = of.ofp_match.from_packet(packet, event.port)
+			      for entry in s.ARPTable[k]:
+				msg.actions.append(of.ofp_action_output(port = int(entry)))
+				msg.data = event.ofp
+				#msg.in_port = event.port
+				event.connection.send(msg)
+			      forwarded = True		    
+			    
+		      
+		      if forwarded == False:
+			#Switch doesn't know where to forward the packet, so it will be flooded on each available port.
+			msg = of.ofp_flow_mod()
+			#msg.idle_timeout = of.OFP_FLOW_PERMANENT
+			#msg.hard_timeout = of.OFP_FLOW_PERMANENT
+			msg.match = of.ofp_match.from_packet(packet, event.port)
+			msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
+			msg.data = event.ofp
+			msg.in_port = event.port
+			event.connection.send(msg)		      
+		      
+		      #1) Get incoming packet
+		      #2) Check if there is the corresponding entry for forwarding that packet in (MAC) -> input port map
+		      #3) If it's this the case, switch will forward on that port
+		      #4) Otherwise, packet will be flooded on each available port
+		      #5) Nonetheless we store the information saying that packets incoming from srcMAC belong to the input port
+		      #6) dstMAC must be on one of the other ports; we'll surely discover it soon
+
 
                 except AttributeError:
                     log.debug("packet type has no transport ports, flooding")
@@ -317,22 +376,23 @@ class VideoSlice (EventMixin):
 	    #insert all queues-policies for every port of this switch  
 	    
 	    #building the corresponding ovs-vsctl command
-	    command = "ovs-vsctl set port " + port.ifname + " qos=@newqos -- --id=@newqos create qos type=linux-htb queues=0=@q0"
-	    queue_index = 1
-	    for key in self.policies.keys():
-	      command = command + "," + str(queue_index) + "=@q" + str(queue_index) 
-	      queue_index = queue_index + 1
-	      if queue_index == len(self.policies.keys()):
-		break	      
-            command = command + " -- "
-            
-            queue_index = 0
-            for key in self.policies.keys():
-	      command = command + "--id=@q" + str(queue_index) + " create queue other-config:min-rate=" + str(self.policies[key]) + " other-config:max-rate=" + str(self.policies[key]) + " -- "
-	      queue_index = queue_index + 1
-	      if queue_index == len(self.policies.keys()):
-		break
-	    os.system(command)
+	    if (not not self.policies.keys()):
+	      command = "ovs-vsctl set port " + port.ifname + " qos=@newqos -- --id=@newqos create qos type=linux-htb queues=0=@q0"
+	      queue_index = 1
+	      for key in self.policies.keys():
+		command = command + "," + str(queue_index) + "=@q" + str(queue_index) 
+		queue_index = queue_index + 1
+		if queue_index == len(self.policies.keys()):
+		  break	      
+	      command = command + " -- "
+	      
+	      queue_index = 0
+	      for key in self.policies.keys():
+		command = command + "--id=@q" + str(queue_index) + " create queue other-config:min-rate=" + str(self.policies[key]) + " other-config:max-rate=" + str(self.policies[key]) + " -- "
+		queue_index = queue_index + 1
+		if queue_index == len(self.policies.keys()):
+		  break
+	      os.system(command)
 	    
 
 	

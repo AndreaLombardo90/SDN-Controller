@@ -10,11 +10,28 @@ class NetGraph:
   
   #this method add and edge from node1 to node2 with weight "weight"
   def addEdge(self, node1, node2, weight):
+    found = False
+    
     if (self.nodes.keys().__contains__(node1) == False):
       self.nodes[node1] = []
       self.nodes[node1].append((node2, weight))
-    elif (self.nodes[node1].__contains__((node2, weight)) == False):
-      self.nodes[node1].append((node2,weight))    
+    else:
+      for c in self.nodes[node1]:
+	if (c[0] == node2):
+	  found = True
+      if found == False:
+	self.nodes[node1].append((node2, weight))
+	
+    found = False	
+    if (self.nodes.keys().__contains__(node2) == False):
+      self.nodes[node2] = []
+      self.nodes[node2].append((node1, weight))
+    else:
+      for c in self.nodes[node2]:
+	if (c[0] == node1):
+	  found = True
+      if found == False:
+	self.nodes[node2].append((node1, weight)) 	
       
   
   #this method remove the edge which links node1 to node2, if it exists
@@ -55,45 +72,83 @@ class NetGraph:
   def Dijkstra(self, src, dst):
     dictionary = {}
     index = 0
+    dist = []
+    prev = []
+    path = []
+    
+    if (self.nodes.keys().__contains__(str(src)) == False or self.nodes.keys().__contains__(str(dst)) == False):
+      return ([],[],[])
+    
     for key in self.nodes.keys():
-      dictionary[key] = index
+      dictionary[index] = key
       index = index + 1
-      
-    (dist, prev) = self.wrapper_Dijkstra(dictionary[src], dictionary[dst])
-    path = self.rebuild_path(prev, dictionary[dst])
+    
+    def get_index(vertex):
+      for k in dictionary.keys():
+	if (str(dictionary[k]) == vertex):
+	  return k 
+	  
+	  
+    #TODO gli indirizzi caricati dalla rete non corrispondono a quelli impostati a mano
+    #una soluzione potrebbe essere quella di discriminare a livello 4 per indirizzo e non 2
+    try:     
+      (dist, prev) = self.wrapper_Dijkstra(dictionary, get_index(str(src)), get_index(str(dst)))
+    except KeyError:
+      print("errorwrapper") 
+    
+    path = self.rebuild_path(prev, get_index(str(dst)))
+    
+    hh = file("testdijkstra.txt", "a+")
+    hh.write("\n\n***\n\n(" + str(dictionary) + ") minpath from " + str(src) + " (" + str(get_index(str(src))) + ") to " + str(dst) + "(" + str(get_index(str(dst))) + "):\n" + str(dist) + " " + str(prev) + " " + str(path) + " " + str(self.nodes) + "\n\n*****\n\n")
+    hh.close()       
+    
+    return (dist, prev, path, dictionary)
     
     
-    
-  
+  #TODO something wrong with mapping between dictionary and self.nodes.keys()
   #real Dijkstra implementation for the Dijkstra interface
-  def wrapper_Dijkstra(self, src, dst):
+  def wrapper_Dijkstra(self, dictionary, src, dst):
+    
+    def get_index(vertex):
+      for k in dictionary.keys():
+	if (str(dictionary[k]) == str(vertex)):
+	  return k
+    
+    
     dist = [0 for i in range(0,len(self.nodes.keys()))]
     prev = [0 for i in range(0,len(self.nodes.keys()))]
     dist[src] = 0
-    prev[src] = None
+    prev[src] = None   
     
     Q = self.nodes.keys()
     
-    for v in self.nodes.keys():
+    if len(Q) < 2:
+      return ([],[])
+    
+
+    for v in dictionary.keys():
       if v != src:
 	dist[v] = float('inf')
 	prev[v] = None
 
     while len(Q) > 0:
-      minimum = int('inf')
+      minimum = float('inf')
       u = None
+      to_remove = None
       for n in Q:
-	if dist[n] < minimum:
-	  minimum = dist[n]
-	  u = n
-      Q.remove(u)
-      
-      for v in self.nodes[u]:
-	alt = dist[u] + v[1]
-	if alt < dist[v[0]]:
-	  dist[v[0]] = alt
-	  prev[v[0]] = u
-	  
+	if dist[get_index(str(n))] < minimum:
+	  minimum = dist[get_index(str(n))]
+	  u = get_index(str(n))
+	  to_remove = n
+      Q.remove(to_remove)
+   
+
+      for v in self.nodes[dictionary[u]]:
+	alt = min(dist[u] + v[1], v[1])#dist[u] + v[1]#min(dist[u], v[1])
+	if alt < dist[get_index(str(v[0]))]:
+	  dist[get_index(str(v[0]))] = alt
+	  prev[get_index(str(v[0]))] = u
+	      
     return (dist, prev)
   
   #this method rebuild a path calculated by Dijkstra method starting for prev vector
