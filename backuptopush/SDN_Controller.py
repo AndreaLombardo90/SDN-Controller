@@ -125,17 +125,10 @@ class VideoSlice (EventMixin):
         l = event.link
         sw1 = dpid_to_str(l.dpid1)
         sw2 = dpid_to_str(l.dpid2)
-	print("LINK EVENT TRA " + str(sw1) + " " + str(sw2) + " su " + str(l.port1) + " " + str(l.port2) + "\n")  
+	  
         if (event.added and self.loaded_net == False and self.begin_work == True):
 	  self.net_graph.addEdge(sw1,sw2,1)
-	
-	
-	
-	for s in self.switches:
-	  if str(s.dpid) == str(sw1):
-	    s.addNeigh(str(l.port1), str(sw2))
-	  if str(s.dpid) == str(sw2):
-	    s.addNeigh(str(l.port2), str(sw1))	      
+	  self.net_graph.addEdge(sw2,sw1,1)
 
 	    
 	    
@@ -250,50 +243,37 @@ class VideoSlice (EventMixin):
 		    path_check.write("loaded " + str(self.loaded_net) + " " + str(packet.src) + " " + str(packet.dst) + " " + str(path) + "\n")
 		    path_check.close()
 		    
-		    if (check == 2 and valid_path == True and path.__contains__(str(this_dpid))):# and (timer()-self.start_time) >= 20):
+		    if (check == 2 and valid_path == True and path.__contains__(str(this_dpid)) and (timer()-self.start_time) >= 20):
 		      #if check equals 2 we need to check if Dijkstra returned a valid path for forwarding
 		      #path decoding:
 		      #1) find position in path of current switch (this_dpid)
 		      #2) next hop will be in next position of path (if we are at the end of the path, then next hop will be packet.dst)
 		      next_hop = None
-		      position = 0
 		      for hop in path:
 			if str(hop) == str(this_dpid):
-			  next_hop = path[position-1]
-			  break
-			position = position + 1	    
+			  if path.index(hop) == len(path)-1:
+			    next_hop = str(packet.dst)
+			    break
+			  else:
+			    next_hop = path[path.index(hop)+1]
+			    break		  
 
+	
 		      for s in self.switches:
 			if s.dpid == str(this_dpid):	
-			  
-			  
-			  if (str(next_hop) != str(packet.dst)):
-			    print("path " + str(path) + " destinazione " + str(packet.dst) + " next_hop " + str(next_hop) + " siamo su " + str(this_dpid) + " con stato mappa delle porte " + str(s.map_ports) + "\n")			      			    
-			    for port_to in s.map_ports.keys():
-			      if str(s.map_ports[port_to]) == str(next_hop):
-				print("path " + str(path) + " destinazione " + str(packet.dst) + " next_hop " + str(next_hop) + " quindi per " + str(s.map_ports[port_to]) + " su porta " + str(port_to) + "\n")			      
-				print("ARPTABLE di " + str(this_dpid) + " " + str(s.ARPTable) + "\n")
-				#entry available, we forward the packet on the correct port
-				msg = of.ofp_flow_mod()
-				#msg.idle_timeout = of.OFP_FLOW_PERMANENT
-				#msg.hard_timeout = of.OFP_FLOW_PERMANENT
-				msg.match = of.ofp_match.from_packet(packet, event.port)
-				msg.actions.append(of.ofp_action_output(port = int(port_to)))
+
+			  for k in s.ARPTable.keys():
+			    if k == next_hop:
+			      #entry available, we forward the packet on the correct port
+			      msg = of.ofp_flow_mod()
+			      #msg.idle_timeout = of.OFP_FLOW_PERMANENT
+			      #msg.hard_timeout = of.OFP_FLOW_PERMANENT
+			      msg.match = of.ofp_match.from_packet(packet, event.port)
+			      for entry in s.ARPTable[k]:
+				msg.actions.append(of.ofp_action_output(port = int(entry)))
 				msg.data = event.ofp
 				#msg.in_port = event.port
 				event.connection.send(msg)
-			  else:
-			    for destination in s.ARPTable.keys():
-			      if str(destination) == str(next_hop):
-				#entry available, we forward the packet on the correct port
-				msg = of.ofp_flow_mod()
-				#msg.idle_timeout = of.OFP_FLOW_PERMANENT
-				#msg.hard_timeout = of.OFP_FLOW_PERMANENT
-				msg.match = of.ofp_match.from_packet(packet, event.port)
-				msg.actions.append(of.ofp_action_output(port = int(s.ARPTable[destination][0])))
-				msg.data = event.ofp
-				#msg.in_port = event.port
-				event.connection.send(msg)				 
 		       	
 		      
 		      
