@@ -212,7 +212,7 @@ class VideoSlice (EventMixin):
 	      #Dijkstra is used only to compute paths between hosts, not for logistic informations between switches
 	      (dist, prev, path, dictionary) = self.net_graph.Dijkstra(str(packet.src), str(packet.dst))
 
-            
+	    print("instrado su percorso " + str(path) + "\n")
             
             if packet.dst.is_multicast:
                 flood()
@@ -259,7 +259,6 @@ class VideoSlice (EventMixin):
 
 		      for s in self.switches:
 			if s.dpid == str(this_dpid):	
-			  
 			  #TODO CHECK USER CLASS  AND PUT IN RIGHT QUEUE
 			  if (str(next_hop) != str(packet.dst)):
 			    for port_to in s.map_ports.keys():
@@ -275,7 +274,7 @@ class VideoSlice (EventMixin):
 				  msg.actions.append(of.ofp_action_output(port = int(port_to)))
 				else:
 				  print("Instradamento di coda\n")
-				  print(str(queues_index) + " \n")
+				  print(str(queues_index) + " su coda n: " + str(int(queues_index[user_class])) + " \n")
 				  msg.actions.append(of.ofp_action_enqueue(port = int(port_to), queue_id = int(queues_index[user_class])))
 				msg.data = event.ofp
 				#msg.in_port = event.port
@@ -296,7 +295,7 @@ class VideoSlice (EventMixin):
 				  msg.actions.append(of.ofp_action_output(port = int(s.ARPTable[destination][0])))
 				else:
 				  print("Instradamento di coda\n")
-				  print(str(queues_index) + " \n")
+				  print(str(queues_index) + " su coda n: " + str(int(queues_index[user_class])) + " \n")
 				  msg.actions.append(of.ofp_action_enqueue(port = int(s.ARPTable[destination][0]), queue_id = int(queues_index[user_class])))				
 				
 				msg.data = event.ofp

@@ -139,8 +139,8 @@ class NetGraph:
    
 
       for v in self.nodes[dictionary[u]]:
-	alt = min(dist[u] + v[1], v[1])#dist[u] + v[1]#min(dist[u], v[1])
-	if alt < dist[get_index(str(v[0]))]:
+	alt = dist[u] + v[1]#min(dist[u] + v[1], v[1])#dist[u] + v[1]
+	if alt <= dist[get_index(str(v[0]))]:
 	  dist[get_index(str(v[0]))] = alt
 	  prev[get_index(str(v[0]))] = u
 	      

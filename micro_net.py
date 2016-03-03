@@ -33,7 +33,7 @@ class FVTopo(Topo):
 
         # Add switch links
         # Specified to the port numbers to avoid any port number consistency issue
-        video_link_config["bw"] = 50 
+        video_link_config["bw"] = 10 
         self.addLink('h1', 's1', port1=1, port2=1, **video_link_config)
         video_link_config["bw"] = 50
         self.addLink('s1', 's2', port1=2, port2=2, **video_link_config)
