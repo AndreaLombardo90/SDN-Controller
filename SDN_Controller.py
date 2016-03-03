@@ -20,7 +20,7 @@ from rule import Rule
 from timeit import default_timer as timer
 
 log = core.getLogger()
-
+queues_index = {}
 
 
 class VideoSlice (EventMixin):
@@ -98,17 +98,16 @@ class VideoSlice (EventMixin):
     def loadUsers(self):
         #users are specificed in users_classes.conf file along with classes they belong according to the following grammar:
         #@class_name
-        #@user_ip
+        #@user_mac
 	users_file = file("users_classes.conf", "r")
-	pat = re.compile("^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
-	
+
 	line = users_file.readline()
 	actual_class = line
 	
 	
 	while line != "":
-	  if (pat.match(line)):
-	    self.usrmgr.addUser(actual_class, line, "")
+	  if (re.match("[0-9a-f]{2}([-:])[0-9a-f]{2}(\\1[0-9a-f]{2}){4}$", line.lower())):
+	    self.usrmgr.addUser(actual_class, line, line)
 	  else:
 	    self.usrmgr.addClass(line)
 	    actual_class = line	    
@@ -125,7 +124,6 @@ class VideoSlice (EventMixin):
         l = event.link
         sw1 = dpid_to_str(l.dpid1)
         sw2 = dpid_to_str(l.dpid2)
-	print("LINK EVENT TRA " + str(sw1) + " " + str(sw2) + " su " + str(l.port1) + " " + str(l.port2) + "\n")  
         if (event.added and self.loaded_net == False and self.begin_work == True):
 	  self.net_graph.addEdge(sw1,sw2,1)
 	
@@ -245,10 +243,6 @@ class VideoSlice (EventMixin):
 		      for i in range(len(path)):
 			path[i] = str(dictionary[path[i]])
 		  
-
-		    path_check = file("path_check.txt", "w")
-		    path_check.write("loaded " + str(self.loaded_net) + " " + str(packet.src) + " " + str(packet.dst) + " " + str(path) + "\n")
-		    path_check.close()
 		    
 		    if (check == 2 and valid_path == True and path.__contains__(str(this_dpid))):# and (timer()-self.start_time) >= 20):
 		      #if check equals 2 we need to check if Dijkstra returned a valid path for forwarding
@@ -266,19 +260,23 @@ class VideoSlice (EventMixin):
 		      for s in self.switches:
 			if s.dpid == str(this_dpid):	
 			  
-			  
+			  #TODO CHECK USER CLASS  AND PUT IN RIGHT QUEUE
 			  if (str(next_hop) != str(packet.dst)):
-			    print("path " + str(path) + " destinazione " + str(packet.dst) + " next_hop " + str(next_hop) + " siamo su " + str(this_dpid) + " con stato mappa delle porte " + str(s.map_ports) + "\n")			      			    
 			    for port_to in s.map_ports.keys():
 			      if str(s.map_ports[port_to]) == str(next_hop):
-				print("path " + str(path) + " destinazione " + str(packet.dst) + " next_hop " + str(next_hop) + " quindi per " + str(s.map_ports[port_to]) + " su porta " + str(port_to) + "\n")			      
-				print("ARPTABLE di " + str(this_dpid) + " " + str(s.ARPTable) + "\n")
 				#entry available, we forward the packet on the correct port
 				msg = of.ofp_flow_mod()
 				#msg.idle_timeout = of.OFP_FLOW_PERMANENT
 				#msg.hard_timeout = of.OFP_FLOW_PERMANENT
 				msg.match = of.ofp_match.from_packet(packet, event.port)
-				msg.actions.append(of.ofp_action_output(port = int(port_to)))
+				#check if packet.src belong to a specific user class
+				user_class = self.usrmgr.get_class(str(packet.src))
+				if (user_class == None):
+				  msg.actions.append(of.ofp_action_output(port = int(port_to)))
+				else:
+				  print("Instradamento di coda\n")
+				  print(str(queues_index) + " \n")
+				  msg.actions.append(of.ofp_action_enqueue(port = int(port_to), queue_id = int(queues_index[user_class])))
 				msg.data = event.ofp
 				#msg.in_port = event.port
 				event.connection.send(msg)
@@ -290,7 +288,17 @@ class VideoSlice (EventMixin):
 				#msg.idle_timeout = of.OFP_FLOW_PERMANENT
 				#msg.hard_timeout = of.OFP_FLOW_PERMANENT
 				msg.match = of.ofp_match.from_packet(packet, event.port)
-				msg.actions.append(of.ofp_action_output(port = int(s.ARPTable[destination][0])))
+				
+				#check if packet.src belong to a specific user class
+				user_class = self.usrmgr.get_class(str(packet.src))
+				if (user_class == None):
+				  print("Instradamento non di coda\n")				  
+				  msg.actions.append(of.ofp_action_output(port = int(s.ARPTable[destination][0])))
+				else:
+				  print("Instradamento di coda\n")
+				  print(str(queues_index) + " \n")
+				  msg.actions.append(of.ofp_action_enqueue(port = int(s.ARPTable[destination][0]), queue_id = int(queues_index[user_class])))				
+				
 				msg.data = event.ofp
 				#msg.in_port = event.port
 				event.connection.send(msg)				 
@@ -372,6 +380,7 @@ class VideoSlice (EventMixin):
 
 
     def _handle_ConnectionUp(self, event):
+	global queues_index
         #event raised each time a new switch goes up
         dpid = dpidToStr(event.dpid)
         log.debug("Switch %s has come up.", dpid)
@@ -393,12 +402,12 @@ class VideoSlice (EventMixin):
 	for s in self.switches:
 	  for port in s.ports:
 	    #insert all queues-policies for every port of this switch  
-	    
 	    #building the corresponding ovs-vsctl command
 	    if (not not self.policies.keys()):
 	      command = "ovs-vsctl set port " + port.ifname + " qos=@newqos -- --id=@newqos create qos type=linux-htb queues=0=@q0"
 	      queue_index = 1
 	      for key in self.policies.keys():
+		
 		command = command + "," + str(queue_index) + "=@q" + str(queue_index) 
 		queue_index = queue_index + 1
 		if queue_index == len(self.policies.keys()):
@@ -407,6 +416,7 @@ class VideoSlice (EventMixin):
 	      
 	      queue_index = 0
 	      for key in self.policies.keys():
+		queues_index[key] = queue_index
 		command = command + "--id=@q" + str(queue_index) + " create queue other-config:min-rate=" + str(self.policies[key]) + " other-config:max-rate=" + str(self.policies[key]) + " -- "
 		queue_index = queue_index + 1
 		if queue_index == len(self.policies.keys()):

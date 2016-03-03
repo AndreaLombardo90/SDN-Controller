@@ -25,7 +25,17 @@ class UsersManager:
   #set current list of policies to those specified in policies vector.
   def set_policies(self, policies):
     self.policies = policies
-    
+  
+  
+  #return traffic class for user u, None if u doesn't belong to any class
+  def get_class(self, u):
+    for c in self.classes.keys():
+      for user in self.classes[c]:
+	print("Controllo se " + str(user.mac[:len(user.mac)-1]) + " e' uguale a " + str(u) + "\n")
+	if (str(user.mac[:len(user.mac)-1]) == str(u)):
+	  return str(c)[:len(str(c))-1]
+    return None
+  
   def print_users(self):
     s = ""
     
