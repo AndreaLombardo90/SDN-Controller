@@ -31,7 +31,6 @@ class UsersManager:
   def get_class(self, u):
     for c in self.classes.keys():
       for user in self.classes[c]:
-	print("Controllo se " + str(user.mac[:len(user.mac)-1]) + " e' uguale a " + str(u) + "\n")
 	if (str(user.mac[:len(user.mac)-1]) == str(u)):
 	  return str(c)[:len(str(c))-1]
     return None

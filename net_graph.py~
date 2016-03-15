@@ -154,6 +154,7 @@ class NetGraph:
         if (dist[i] > max_distance and Q.__contains__(dictionary[i])):
           max_distance = dist[i]
           u = dictionary[i]
+      print("tento di rimuovere da Q " + str(u) + "\n")
       Q.remove(u)
       
       for v in Q:

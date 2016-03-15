@@ -211,6 +211,7 @@ class VideoSlice (EventMixin):
             if (check == 2):
 	      #Dijkstra is used only to compute paths between hosts, not for logistic informations between switches
 	      (dist, prev, path, dictionary) = self.net_graph.Dijkstra(str(packet.src), str(packet.dst))
+              print("Instrado su path " + str(path) + "\n")
             
             if packet.dst.is_multicast:
                 flood()
